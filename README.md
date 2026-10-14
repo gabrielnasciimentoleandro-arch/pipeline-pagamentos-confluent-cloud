@@ -11,6 +11,22 @@ Repositório: **`pipeline-pagamentos-confluent-cloud`** (público, nome em minú
 
 ---
 
+## Status do projeto
+
+| Item | Situação |
+|---|---|
+| **Implementação** | ✅ Completa — arquitetura, scripts de todas as camadas, SQL do Flink, configuração do conector, consumidor e documentação versionados neste repositório |
+| **Validação da camada de dados** | ✅ Os arquivos `sql/*.sql`, o gerador de transações e a regra de contagem foram executados contra um **PostgreSQL 17 com replicação lógica** (`wal_level=logical`); a regra retornou o alerta esperado (3+ transações do mesmo cartão em 60s) |
+| **Execução no Confluent Cloud** | ⏳ Pendente — o ambiente de nuvem não foi disponibilizado durante o desenvolvimento (o laboratório do curso não oferece o acesso) |
+| **Evidências de execução** | ⏳ Serão gravadas automaticamente em `evidencias/` na primeira execução com ambiente — roteiro na seção [Roteiro de evidências](#roteiro-de-evidências) |
+| **Custo até aqui** | **US$ 0,00** — nenhum recurso foi provisionado em nuvem |
+
+**O que falta para concluir:** criar o ambiente no Confluent Cloud, rodar as camadas 1→5
+(`scripts/01` a `05`) e anexar as saídas em `evidencias/`. O caminho completo — 100% pelo
+navegador, sem terminal — está no runbook abaixo.
+
+---
+
 ## O que este pipeline faz
 
 Um pipeline de pagamentos de ponta a ponta, em streaming, com cinco camadas:
@@ -86,7 +102,7 @@ Cartão fixo por conta (facilita reproduzir a fraude): conta 1 → `****1111`, c
 
 ```
 .
-├── README.md                     <- esta entrega (evidências por camada)
+├── README.md                     <- esta entrega (documentação e roteiro de evidências)
 ├── .env.example                  <- modelo de variáveis (nenhum segredo real aqui)
 ├── .gitignore                    <- .env, .local.json, tfstate, caches
 ├── docker-compose.yml            <- Postgres local para ensaiar o CDC (opcional)
@@ -121,8 +137,23 @@ Cartão fixo por conta (facilita reproduzir a fraude): conta 1 → `****1111`, c
 ├── docs/
 │   ├── custos.md                 <- como medir e onde achar o custo
 │   └── checklist-entrega.md      <- checklist do desafio
-└── evidencias/                   <- saídas reais de execução (a prova)
+└── evidencias/                   <- saídas reais de execução (gravadas pelos scripts)
 ```
+
+## Roteiro de evidências
+
+Cada camada só conta como entregue quando existe **evidência**: um print, uma saída de
+comando ou o próprio evento. Os scripts já gravam os arquivos automaticamente — prints
+de tela são bem-vindos para métricas e fatura.
+
+| Camada | O que capturar | Arquivo gerado |
+|---|---|---|
+| 1 — Fundação | Cluster `PROVISIONED`, lista das duas service accounts, ACLs aplicadas | `evidencias/01-fundacao.txt` |
+| 2 — Contrato | Subjects do Schema Registry e as versões do schema antes/depois da mudança de campo | `evidencias/02-contrato.txt` |
+| 3 — Ingestão | Conector `RUNNING` + uma mensagem real do CDC (com `op`, `before`, `after`) + evento de UPDATE/DELETE | `evidencias/03-ingestao.txt` |
+| 4 — Processamento | As 3 tabelas criadas no Flink e o statement do job `RUNNING` | `evidencias/04-processamento.txt` |
+| 5 — Operação | O alerta chegando em `alertas.fraude` + métricas do Flink e do conector | `evidencias/05-operacao.txt` |
+| Custo | Captura de Billing → Costs do período | `evidencias/05-custos.json` |
 
 ## Pré-requisitos
 
@@ -130,7 +161,7 @@ Cartão fixo por conta (facilita reproduzir a fraude): conta 1 → `****1111`, c
 |---|---|---|
 | Conta no Confluent Cloud | cluster, Schema Registry, Flink | <https://confluent.cloud/signup> (procure cupom de crédito de teste) |
 | Confluent CLI ≥ 3.x | criar tudo por linha de comando | <https://docs.confluent.io/confluent-cli/current/install.html> |
-| Postgres 13+ acessível pela internet | fonte do CDC | Postgres do lab, ou gerenciado (Neon, Supabase, RDS…). O conector roda na nuvem da Confluent: ele precisa alcançar o banco |
+| Postgres 13+ acessível pela internet | fonte do CDC | Postgres do laboratório, ou gerenciado (Neon, Supabase, RDS…). O conector roda na nuvem da Confluent: ele precisa alcançar o banco |
 | `psql`, `jq`, `python3`, `curl` | scripts e evidências | seu sistema |
 | `pip install -r scripts/requisitos.txt -r consumidor/requisitos.txt` | gerador e consumidor | — |
 
@@ -175,12 +206,7 @@ O que essa camada entrega e por quê:
 - **Duas identidades:** `sa-produtor` escreve no Kafka (usada pelo conector CDC) e `sa-leitor` só lê `alertas.fraude`. Cluster **Basic** não tem papéis RBAC granulares — então a granularidade é feita com **ACLs** (write apenas no prefixo `pgcdc.public.`, read apenas em `alertas.fraude`).
 - Os IDs (não-secretos) ficam registrados em `.env` e em `evidencias/01-fundacao.txt`. **Nenhuma chave secreta é versionada.**
 
-📌 **Evidência da camada 1** — rode `confluent kafka cluster describe "$CLUSTER_ID"` e
-`confluent kafka acl list --service-account "$SA_PRODUTOR"` e cole a saída:
-
-```text
-<sua evidência aqui>
-```
+📌 **Evidência (camada 1):** gerada automaticamente em `evidencias/01-fundacao.txt` — ver o [roteiro de evidências](#roteiro-de-evidências).
 
 ### Camada 3 — Ingestão (CDC)
 
@@ -202,12 +228,7 @@ psql "$DATABASE_URL" -c "DELETE FROM public.transacoes WHERE id=2;"
 confluent kafka topic consume pgcdc.public.transacoes --max-messages 2
 ```
 
-📌 **Evidência da camada 3** — saída do conector `RUNNING` + um evento Debezium real
-(repare no `op: c/u/d` e nos blocos `before`/`after`):
-
-```text
-<sua evidência aqui>
-```
+📌 **Evidência (camada 3):** gerada automaticamente em `evidencias/03-ingestao.txt` (conector `RUNNING` + evento Debezium real com `op: c/u/d`).
 
 ### Camada 2 — Contrato (Schema Registry)
 
@@ -220,11 +241,7 @@ O teste: adicionamos a coluna `canal` em `public.transacoes`. O contrato ganha u
 aditiva = compatível). Se a mudança fosse destrutiva, o Schema Registry bloquearia a
 publicação — o pipeline não quebra em silêncio.
 
-📌 **Evidência da camada 2** — subjects e as versões do schema antes/depois:
-
-```text
-<sua evidência aqui>
-```
+📌 **Evidência (camada 2):** gerada automaticamente em `evidencias/02-contrato.txt` (subjects e versões do schema antes/depois).
 
 ### Camada 4 — Processamento (Flink SQL)
 
@@ -237,11 +254,7 @@ Ou, se preferir clicar: *Flink SQL → Create table → From topic* para cada t�
 `flink/04_alerta_fraude.sql`. Cole o DDL gerado de volta nos arquivos de `flink/`
 para manter a configuração versionada.
 
-📌 **Evidência da camada 4** — as 3 tabelas criadas e o job `RUNNING`:
-
-```text
-<sua evidência aqui>
-```
+📌 **Evidência (camada 4):** gerada automaticamente em `evidencias/04-processamento.txt` (3 tabelas + statement `RUNNING`).
 
 ### Camada 5 — Operação (a prova de ponta a ponta)
 
@@ -256,11 +269,7 @@ Se aparecer algo assim, o caminho do dado está fechado:
          | janela 2026-10-14 18:02:00 -> 18:03:00 | cidade da ultima tx: Miami
 ```
 
-📌 **Evidência da camada 5** — alerta no tópico/consumidor + métricas:
-
-```text
-<sua evidência aqui>
-```
+📌 **Evidência (camada 5):** gerada automaticamente em `evidencias/05-operacao.txt` (evento real em `alertas.fraude` + métricas do Flink e do conector).
 
 ---
 
@@ -276,20 +285,28 @@ service accounts e API keys, e lembra de soltar o slot/publicação no Postgres.
 
 ## Quanto custou rodar
 
-> Preencha com os números da sua conta. Passo a passo em [`docs/custos.md`](docs/custos.md).
+**Execução em nuvem ainda não realizada** — nenhum recurso foi provisionado, portanto
+o custo até aqui é **US$ 0,00**.
 
-| Item | Como é cobrado | Uso no desafio | Custo no período |
+Quando for executado (roteiro de medição em [`docs/custos.md`](docs/custos.md)), o custo
+é dominado pelo **compute pool do Flink** e pelo **tempo em que os recursos ficam
+ligados**. Para uma sessão de estudo de algumas horas, fica na casa de poucos dólares.
+Como manter sob controle:
+
+- `--max-cfu 10` no compute pool (é um teto de gasto, não um piso);
+- rodar as camadas em sequência e não deixar o pool ligado sem uso;
+- `scripts/99_destruir.sh` no fim — nada continua contando.
+
+| Item | Como é cobrado | Uso até aqui | Custo |
 |---|---|---|---|
-| Cluster Kafka (Basic) | por hora | ___ h | US$ ___ |
-| Conector CDC (Postgres) | por hora por conector | ___ h | US$ ___ |
-| Flink (compute pool) | por CFU-hora | ___ CFU · ___ h | US$ ___ |
-| Schema Registry | por hora | ___ h | US$ ___ |
-| Armazenamento/rede | por GB | ___ GB | US$ ___ |
-| **Total** | | | **US$ ___** |
+| Cluster Kafka (Basic) | por hora | não executado | US$ 0,00 |
+| Conector CDC (Postgres) | por hora por conector | não executado | US$ 0,00 |
+| Flink (compute pool) | por CFU-hora | não executado | US$ 0,00 |
+| Schema Registry | por hora | não executado | US$ 0,00 |
+| **Total** | | | **US$ 0,00** |
 
-Como o lugar certo é a própria fatura, a evidência é a captura de
-*Billing → Costs* do período. Para reduzir: rodar as camadas em sequência,
-não deixar o compute pool ligado sem uso e destruir tudo no fim.
+Preços vigentes: <https://www.confluent.io/confluent-cloud/pricing/> · medição real em
+*Billing → Costs*.
 
 ## Decisões de arquitetura (por que cada peça)
 
@@ -336,16 +353,16 @@ não deixar o compute pool ligado sem uso e destruir tudo no fim.
 
 ## Checklist final de entrega
 
-- [ ] Repositório público, nome em minúsculas e sem acento
-- [ ] O link enviado é o do repositório (não o de um arquivo dentro dele)
-- [ ] Cada camada tem evidência real (print, saída de comando ou o próprio evento)
-- [ ] Nenhum `<sua evidência aqui>` sobrando no README
-- [ ] Nenhuma senha ou chave versionada; `.env.example` no lugar do `.env`
-- [ ] Outra pessoa consegue subir o pipeline seguindo apenas este README
-- [ ] README responde: o que cada camada faz, por que cada peça, como subir do zero, como derrubar, quanto custou
+- [x] Repositório público, nome em minúsculas e sem acento
+- [x] O link enviado é o do repositório (não o de um arquivo dentro dele)
+- [x] Nenhuma senha ou chave versionada; `.env.example` no lugar do `.env`
+- [x] `.gitignore` cobrindo `.env`, `conector/*.local.json` e `terraform.tfstate`
+- [x] README responde: o que cada camada faz, por que cada peça, como subir do zero, como derrubar, quanto custou
+- [ ] Cada camada com evidência real de execução — pendente de ambiente (ver [Roteiro de evidências](#roteiro-de-evidências))
+- [ ] Outra pessoa consegue subir o pipeline seguindo apenas este README — o caminho está documentado; falta a validação em ambiente real
 
 Detalhamento em [`docs/checklist-entrega.md`](docs/checklist-entrega.md).
 
 ---
 
-**Autor:** _<seu nome>_ · Desafio de projeto DIO — Pipeline Real-Time End-to-End com Confluent Cloud.
+**Autor:** Gabriel Nascimento Leandro · Desafio de projeto DIO — Pipeline Real-Time End-to-End com Confluent Cloud.
