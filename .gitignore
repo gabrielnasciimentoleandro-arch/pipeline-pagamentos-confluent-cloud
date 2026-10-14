@@ -1,0 +1,22 @@
+# Segredos (nunca versionar)
+.env
+.env.local
+conector/*.local.json
+*.pem
+*.key
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Diversos
+.terraform/
+*.log
+evidencias/*.tmp
+.DS_Store
