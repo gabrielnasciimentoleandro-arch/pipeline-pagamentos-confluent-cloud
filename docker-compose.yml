@@ -1,0 +1,40 @@
+# Postgres local para ENSAIAR o pipeline antes de usar um banco na nuvem.
+#
+# Atenção: o conector CDC do Confluent Cloud roda na nuvem e NÃO alcança o seu
+# localhost. Use este compose para validar schema, gerador e consultas; para a
+# ingestão de verdade, aponte para um Postgres gerenciado e acessível.
+#
+#   docker compose up -d postgres
+#   export PGHOST=localhost PGPORT=5432 PGDATABASE=pagamentos PGUSER=postgres PGPASSWORD=postgres
+#   psql -h localhost -U postgres -d pagamentos -f sql/01_schema.sql
+#   psql -h localhost -U postgres -d pagamentos -f sql/02_contas.sql
+#   python3 scripts/gerador_transacoes.py --modo rajada
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg-pagamentos
+    environment:
+      POSTGRES_DB: pagamentos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    command:
+      - postgres
+      - -c
+      - wal_level=logical          # requisito do CDC
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_wal_senders=10
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pagamentos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

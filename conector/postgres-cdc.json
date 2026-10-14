@@ -1,0 +1,22 @@
+{
+  "name": "postgres-cdc-pagamentos",
+  "connector.class": "PostgresCdcSourceV2",
+  "kafka.auth.mode": "KAFKA_API_KEY",
+  "kafka.api.key": "<API_KEY_DO_SERVICE_ACCOUNT_PRODUTOR>",
+  "kafka.api.secret": "<API_SECRET_DO_SERVICE_ACCOUNT_PRODUTOR>",
+  "database.hostname": "<SEU_HOST_POSTGRES>",
+  "database.port": "5432",
+  "database.user": "<SEU_USUARIO>",
+  "database.password": "<SUA_SENHA>",
+  "database.dbname": "<SEU_BANCO>",
+  "table.include.list": "public.transacoes,public.contas",
+  "topic.prefix": "pgcdc",
+  "slot.name": "dbz_pagamentos",
+  "publication.name": "dbz_pagamentos_pub",
+  "publication.autocreate.mode": "filtered",
+  "snapshot.mode": "initial",
+  "output.data.format": "JSON_SR",
+  "output.key.format": "JSON_SR",
+  "decimal.handling.mode": "double",
+  "tasks.max": "1"
+}
